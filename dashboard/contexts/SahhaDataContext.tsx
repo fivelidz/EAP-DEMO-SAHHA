@@ -183,27 +183,9 @@ const SahhaDataContext = createContext<{
 export function SahhaDataProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(sahhaDataReducer, initialState);
 
-  // Initialize demo data on provider mount
+  // Don't auto-load any data - let the Profile Management page handle it
   React.useEffect(() => {
-    console.log('🚀 SahhaDataProvider initializing with demo data...');
-    
-    // Create and set demo profiles immediately
-    const demoProfiles = createDemoProfiles();
-    dispatch({ type: 'SET_PROFILES', payload: demoProfiles });
-    
-    // Set up demo assignments
-    const demoAssignments = createDemoAssignments(demoProfiles);
-    dispatch({ type: 'SET_ASSIGNMENTS', payload: demoAssignments });
-    
-    // Initialize editable IDs
-    const initialEditableIds = demoProfiles.reduce((acc, profile) => {
-      acc[profile.profileId] = profile.editableProfileId || '';
-      return acc;
-    }, {} as { [profileId: string]: string });
-    dispatch({ type: 'SET_EDITABLE_IDS', payload: initialEditableIds });
-    
-    dispatch({ type: 'SET_LAST_API_CALL', payload: new Date() });
-    console.log(`📋 Demo data initialized: ${demoProfiles.length} profiles, ${Object.keys(demoAssignments).length} assignments`);
+    console.log('🚀 SahhaDataProvider initialized - waiting for Profile Management to load data');
   }, []);
 
   return (
@@ -295,44 +277,35 @@ export function useSahhaProfiles() {
   const fetchProfiles = async (forceRefresh = false) => {
     // Don't refetch if we already have profiles and it's not a forced refresh
     if (!forceRefresh && state.profiles.length > 0) {
-      console.log('📋 Using cached profile data, skipping API call');
+      console.log('📋 Using cached profile data');
       return state.profiles;
     }
 
-    dispatch({ type: 'SET_LOADING_PROFILES', payload: true });
-    dispatch({ type: 'SET_ERROR', payload: null });
+    // This function is now mainly used for loading demo data as fallback
+    console.log('🔄 fetchProfiles called - returning current profiles');
+    return state.profiles;
+  };
 
-    // First try to load demo data, then optionally try API if available
-    console.log('🚀 Loading dashboard with demo data (default mode)');
+  const loadDemoData = () => {
+    console.log('🎭 Loading demo data as fallback...');
     
-    try {
-      // Always start with demo data to keep dashboard functional
-      const demoProfiles = createDemoProfiles();
-      dispatch({ type: 'SET_PROFILES', payload: demoProfiles });
-      
-      // Set up demo assignments
-      const demoAssignments = createDemoAssignments(demoProfiles);
-      dispatch({ type: 'SET_ASSIGNMENTS', payload: demoAssignments });
-      localStorage.setItem(`assignments_${state.orgId}`, JSON.stringify(demoAssignments));
+    const demoProfiles = createDemoProfiles();
+    dispatch({ type: 'SET_PROFILES', payload: demoProfiles });
+    
+    const demoAssignments = createDemoAssignments(demoProfiles);
+    dispatch({ type: 'SET_ASSIGNMENTS', payload: demoAssignments });
+    localStorage.setItem(`assignments_${state.orgId}`, JSON.stringify(demoAssignments));
 
-      // Initialize editable IDs
-      const initialEditableIds = demoProfiles.reduce((acc, profile) => {
-        acc[profile.profileId] = profile.editableProfileId || '';
-        return acc;
-      }, {} as { [profileId: string]: string });
-      dispatch({ type: 'SET_EDITABLE_IDS', payload: initialEditableIds });
-      localStorage.setItem(`editableIds_${state.orgId}`, JSON.stringify(initialEditableIds));
+    const initialEditableIds = demoProfiles.reduce((acc, profile) => {
+      acc[profile.profileId] = profile.editableProfileId || '';
+      return acc;
+    }, {} as { [profileId: string]: string });
+    dispatch({ type: 'SET_EDITABLE_IDS', payload: initialEditableIds });
+    localStorage.setItem(`editableIds_${state.orgId}`, JSON.stringify(initialEditableIds));
 
-      dispatch({ type: 'SET_LAST_API_CALL', payload: new Date() });
-      dispatch({ type: 'SET_LOADING_PROFILES', payload: false });
-      return demoProfiles;
-      
-    } catch (error: any) {
-      console.error('❌ Unexpected error loading demo data:', error);
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to initialize dashboard' });
-      dispatch({ type: 'SET_LOADING_PROFILES', payload: false });
-      return [];
-    }
+    dispatch({ type: 'SET_LAST_API_CALL', payload: new Date() });
+    console.log(`📋 Demo data loaded: ${demoProfiles.length} profiles`);
+    return demoProfiles;
   };
 
   const updateProfileScores = (profileId: string, scores: Partial<Profile>) => {
@@ -354,6 +327,7 @@ export function useSahhaProfiles() {
   };
 
   const setProfiles = (profiles: Profile[]) => {
+    console.log(`🔄 Setting ${profiles.length} profiles in context`);
     dispatch({ type: 'SET_PROFILES', payload: profiles });
     dispatch({ type: 'SET_LAST_API_CALL', payload: new Date() });
   };
@@ -370,6 +344,7 @@ export function useSahhaProfiles() {
     updateAssignment,
     updateEditableId,
     setProfiles,
+    loadDemoData,
   };
 }
 

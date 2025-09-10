@@ -125,7 +125,8 @@ export default function ProfileManagement({ orgId }: ProfileManagementProps) {
     updateProfileScores, 
     updateAssignment, 
     updateEditableId,
-    setProfiles 
+    setProfiles,
+    loadDemoData 
   } = useSahhaProfiles();
 
   // Use Sahha archetype system
@@ -152,7 +153,7 @@ export default function ProfileManagement({ orgId }: ProfileManagementProps) {
   const [expandedScores, setExpandedScores] = useState<{[key: string]: boolean}>({});
   const [expandedArchetypes, setExpandedArchetypes] = useState<{[key: string]: boolean}>({});
   const [showArchetypeDetails, setShowArchetypeDetails] = useState(false);
-  const [dataMode, setDataMode] = useState<'demo' | 'api'>('demo'); // Toggle between demo and API data
+  const [dataMode, setDataMode] = useState<'demo' | 'api'>('api'); // Default to API, fall back to demo if fails
   
   // Default sandbox credentials for testing
   const DEFAULT_SANDBOX_CREDENTIALS = {
@@ -188,7 +189,8 @@ export default function ProfileManagement({ orgId }: ProfileManagementProps) {
       localStorage.setItem('sahha_credentials', JSON.stringify(DEFAULT_SANDBOX_CREDENTIALS));
       console.log('✅ Saved default sandbox credentials');
     }
-    fetchProfilesWrapper();
+    // Try API first on initial load
+    fetchProfilesWrapper(false, true);
   }, [orgId]);
 
   useEffect(() => {
@@ -315,19 +317,41 @@ export default function ProfileManagement({ orgId }: ProfileManagementProps) {
     }
   };
 
-  const fetchProfilesWrapper = async (isRefresh = false) => {
+  const fetchProfilesWrapper = async (isRefresh = false, isInitialLoad = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
       }
       
       let fetchedProfiles;
-      if (dataMode === 'api' && apiCredentials) {
-        // Fetch from actual Sahha API
-        fetchedProfiles = await fetchProfilesFromAPI();
+      
+      // On initial load or when in API mode, try API first
+      if ((isInitialLoad || dataMode === 'api') && apiCredentials) {
+        try {
+          // Try to fetch from actual Sahha API
+          fetchedProfiles = await fetchProfilesFromAPI();
+          // If successful and this is initial load, stay in API mode
+          if (isInitialLoad && fetchedProfiles && fetchedProfiles.length > 0) {
+            setDataMode('api');
+            console.log('✅ Successfully loaded API data');
+          }
+        } catch (apiError) {
+          console.error('API fetch failed:', apiError);
+          // If API fails and this is initial load, fall back to demo
+          if (isInitialLoad) {
+            console.log('📡 API failed, falling back to demo data');
+            setDataMode('demo');
+            fetchedProfiles = loadDemoData();
+          } else if (dataMode === 'demo') {
+            // If already in demo mode, load demo data
+            fetchedProfiles = loadDemoData();
+          }
+          // Show user-friendly message about the fallback
+          addDebugLog('warning', '⚠️ API unavailable, using demo data');
+        }
       } else {
         // Use demo data from context
-        fetchedProfiles = await fetchProfiles(isRefresh);
+        fetchedProfiles = loadDemoData();
       }
       
       // Start progressive score loading after profiles are loaded
@@ -337,6 +361,13 @@ export default function ProfileManagement({ orgId }: ProfileManagementProps) {
       
     } catch (err) {
       console.error('Error fetching profiles:', err);
+      // As a last resort, ensure demo data is loaded
+      if (profiles.length === 0) {
+        const demoProfiles = loadDemoData();
+        if (demoProfiles && demoProfiles.length > 0) {
+          loadScoresProgressively(demoProfiles);
+        }
+      }
     } finally {
       setRefreshing(false);
     }
